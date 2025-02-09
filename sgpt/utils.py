@@ -47,25 +47,52 @@ def run_command(command: str) -> None:
     It is aware of the current user's $SHELL.
     :param command: A shell command to run.
     """
-    # Sanitize the command by removing any chain-of-thought content.
+    # Sanitize the command by removing any chain-of-thought content
     command = sanitize_command(command)
     
-    # If the command contains a markdown code block (e.g. triple backticks),
-    # extract just the content inside that code block.
+    # Extract code block content if present
     code_block_match = re.search(r'```(?:bash)?\s*(.*?)\s*```', command, flags=re.DOTALL)
     if code_block_match:
         command = code_block_match.group(1)
     
+    # Split multiple commands and check if they exist
+    commands = command.split('\n')
+    filtered_commands = []
+    
+    for cmd in commands:
+        # Skip empty lines
+        if not cmd.strip():
+            continue
+            
+        # Get the base command (before any arguments or pipes)
+        base_cmd = cmd.split('|')[0].strip().split()[0]
+        
+        # Check if command exists using 'which'
+        if platform.system() != "Windows":
+            check_cmd = f"which {base_cmd} >/dev/null 2>&1"
+            if os.system(check_cmd) == 0:
+                filtered_commands.append(cmd)
+            else:
+                typer.secho(f"Command not found: {base_cmd}", fg="yellow", err=True)
+        else:
+            # On Windows, we'll add the command anyway since checking is more complex
+            filtered_commands.append(cmd)
+    
+    if not filtered_commands:
+        typer.secho("No valid commands to execute", fg="red", err=True)
+        return
+        
+    # Join valid commands and execute
     if platform.system() == "Windows":
         is_powershell = len(os.getenv("PSModulePath", "").split(os.pathsep)) >= 3
         full_command = (
-            f'powershell.exe -Command "{command}"'
+            f'powershell.exe -Command "{"; ".join(filtered_commands)}"'
             if is_powershell
-            else f'cmd.exe /c "{command}"'
+            else f'cmd.exe /c "{" && ".join(filtered_commands)}"'
         )
     else:
         shell = os.environ.get("SHELL", "/bin/sh")
-        full_command = f"{shell} -c {shlex.quote(command)}"
+        full_command = f"{shell} -c {shlex.quote('; '.join(filtered_commands))}"
 
     os.system(full_command)
 

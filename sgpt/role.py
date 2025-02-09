@@ -15,11 +15,13 @@ from .utils import option_callback
 
 SHELL_ROLE = """Provide only {shell} commands for {os} without any description.
 If there is a lack of details, provide most logical solution.
+{package_manager_preference}
 Ensure the output is a valid shell command.
 If multiple steps required try to combine them together using &&.
 Provide only plain text without Markdown formatting.
 Do not provide markdown formatting such as ```.
-"""
+When providing multiple commands, start with basic/common commands first.
+Try to provide alternative commands when possible for similar functionality."""
 
 DESCRIBE_SHELL_ROLE = """Provide a terse, single sentence description of the given shell command.
 Describe each argument and option of the command.
@@ -36,6 +38,7 @@ For example if the prompt is "Hello world Python", you should return "print('Hel
 
 DEFAULT_ROLE = """You are programming and system administration assistant.
 You are managing {os} operating system with {shell} shell.
+{package_manager_preference}
 Provide short responses in about 100 words, unless you are specifically asked for more details.
 If you need to store any data, assume it will be stored in the conversation.
 APPLY MARKDOWN formatting when possible."""
@@ -56,13 +59,29 @@ class SystemRole:
         self.storage.mkdir(parents=True, exist_ok=True)
         self.name = name
         if variables:
+            # Add package manager preference if set
+            pkg_mgr = cfg.get("PACKAGE_MANAGER")
+            if pkg_mgr != "auto":
+                variables["package_manager_preference"] = f"For package management operations, always use {pkg_mgr}."
+            else:
+                variables["package_manager_preference"] = "Use the system's default package manager for package operations."
             role = role.format(**variables)
         self.role = role
 
     @classmethod
     def create_defaults(cls) -> None:
         cls.storage.parent.mkdir(parents=True, exist_ok=True)
-        variables = {"shell": cls._shell_name(), "os": cls._os_name()}
+        variables = {
+            "shell": cls._shell_name(), 
+            "os": cls._os_name(),
+            "package_manager_preference": ""  # Initialize empty
+        }
+        
+        # Add package manager preference if set
+        pkg_mgr = cfg.get("PACKAGE_MANAGER")
+        if pkg_mgr != "auto":
+            variables["package_manager_preference"] = f"Always use {pkg_mgr} as the package manager when available."
+        
         for default_role in (
             SystemRole("ShellGPT", DEFAULT_ROLE, variables),
             SystemRole("Shell Command Generator", SHELL_ROLE, variables),
