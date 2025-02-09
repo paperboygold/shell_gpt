@@ -1,11 +1,17 @@
 from abc import ABC, abstractmethod
 from typing import Generator
+import re
 
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from typer import secho
 
+def sanitize_response(response: str) -> str:
+    """
+    Remove any chain-of-thought markers (e.g. <think>...</think>) from the response.
+    """
+    return re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL).strip()
 
 class Printer(ABC):
     console = Console()
@@ -20,11 +26,13 @@ class Printer(ABC):
 
     def __call__(self, chunks: Generator[str, None, None], live: bool = True) -> str:
         if live:
-            return self.live_print(chunks)
-        with self.console.status("[bold green]Loading..."):
-            full_completion = "".join(chunks)
-        self.static_print(full_completion)
-        return full_completion
+            result = self.live_print(chunks)
+        else:
+            with self.console.status("[bold green]Loading..."):
+                result = "".join(chunks)
+            self.static_print(result)
+        # Sanitize response before returning it (e.g. for shell execution)
+        return sanitize_response(result)
 
 
 class MarkdownPrinter(Printer):

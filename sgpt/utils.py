@@ -1,6 +1,7 @@
 import os
 import platform
 import shlex
+import re
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable
 
@@ -9,6 +10,13 @@ from click import BadParameter, UsageError
 
 from sgpt.__version__ import __version__
 from sgpt.integration import bash_integration, zsh_integration
+
+
+def sanitize_command(command: str) -> str:
+    """
+    Remove any chain-of-thought markers and content from the command string.
+    """
+    return re.sub(r'<think>.*?</think>', '', command, flags=re.DOTALL).strip()
 
 
 def get_edited_prompt() -> str:
@@ -39,6 +47,15 @@ def run_command(command: str) -> None:
     It is aware of the current user's $SHELL.
     :param command: A shell command to run.
     """
+    # Sanitize the command by removing any chain-of-thought content.
+    command = sanitize_command(command)
+    
+    # If the command contains a markdown code block (e.g. triple backticks),
+    # extract just the content inside that code block.
+    code_block_match = re.search(r'```(?:bash)?\s*(.*?)\s*```', command, flags=re.DOTALL)
+    if code_block_match:
+        command = code_block_match.group(1)
+    
     if platform.system() == "Windows":
         is_powershell = len(os.getenv("PSModulePath", "").split(os.pathsep)) >= 3
         full_command = (
@@ -72,7 +89,7 @@ def install_shell_integration(*_args: Any) -> None:
     """
     # TODO: Add support for Windows.
     # TODO: Implement updates.
-    shell = os.getenv("SHELL", "")
+    shell = os.environ.get("SHELL", "")
     if "zsh" in shell:
         typer.echo("Installing ZSH integration...")
         with open(os.path.expanduser("~/.zshrc"), "a", encoding="utf-8") as file:
